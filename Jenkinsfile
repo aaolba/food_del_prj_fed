@@ -43,18 +43,22 @@ pipeline {
             }
         }
         
-        stage('🔐 SAST - SonarQube Analysis') {
-            steps {
-                withSonarQubeEnv('SonarQube') {
-                    sh '''
-                        sonar-scanner \
-                          -Dsonar.projectKey=food-delivery \
-                          -Dsonar.sources=backend,frontend/src \
-                          -Dsonar.exclusions=**/node_modules/**,**/dist/**,**/build/**
-                    '''
-                }
+stage('🔐 SAST - SonarQube Analysis') {
+    steps {
+        script {
+            def scannerHome = tool 'SonarScanner'
+            withSonarQubeEnv('SonarQube') {
+                sh """
+                    ${scannerHome}/bin/sonar-scanner \
+                      -Dsonar.projectKey=food-delivery \
+                      -Dsonar.sources=backend,frontend/src \
+                      -Dsonar.exclusions=**/node_modules/**,**/dist/**,**/build/**
+                """
             }
         }
+    }
+}
+
         
         stage('🔍 Quality Gate') {
             steps {
