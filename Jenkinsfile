@@ -99,32 +99,39 @@ stage('🔐 SAST - SonarQube Analysis') {
             }
         }
         
-        stage('🔒 Container Security Scan - Trivy') {
-            steps {
-                sh '''
-                    # Install Trivy if not present
-                    if ! command -v trivy &> /dev/null; then
-                        wget -qO - https://aquasecurity.github.io/trivy-repo/deb/public.key | apt-key add -
-                        echo "deb https://aquasecurity.github.io/trivy-repo/deb $(lsb_release -sc) main" | tee -a /etc/apt/sources.list.d/trivy.list
-                        apt-get update
-                        apt-get install -y trivy
-                    fi
-                    
-                    # Scan Backend Image
-                    trivy image --severity HIGH,CRITICAL \
-                        --format json \
-                        --output trivy-backend.json \
-                        ${IMAGE_NAME}-backend:${GIT_COMMIT_SHORT} || true
-                    
-                    # Scan Frontend Image
-                    trivy image --severity HIGH,CRITICAL \
-                        --format json \
-                        --output trivy-frontend.json \
-                        ${IMAGE_NAME}-frontend:${GIT_COMMIT_SHORT} || true
-                '''
-                archiveArtifacts artifacts: 'trivy-*.json', allowEmptyArchive: true
-            }
-        }
+stage('🔒 Container Security Scan - Trivy') {
+    steps {
+        sh '''
+            # Check if Trivy is installed
+            if ! command -v trivy &> /dev/null; then
+                echo "Installing Trivy..."
+                
+                # Add Trivy repository (new method without apt-key)
+                apt-get update
+                apt-get install -y wget apt-transport-https gnupg
+                wget -qO - https://aquasecurity.github.io/trivy-repo/deb/public.key | gpg --dearmor -o /usr/share/keyrings/trivy.gpg
+                echo "deb [signed-by=/usr/share/keyrings/trivy.gpg] https://aquasecurity.github.io/trivy-repo/deb generic main" | tee /etc/apt/sources.list.d/trivy.list
+                apt-get update
+                apt-get install -y trivy
+            fi
+            
+            # Scan Backend Image
+            trivy image --severity HIGH,CRITICAL \
+                --format json \
+                --output trivy-backend.json \
+                ${IMAGE_NAME}-backend:${GIT_COMMIT_SHORT} || true
+            
+            # Scan Frontend Image
+            trivy image --severity HIGH,CRITICAL \
+                --format json \
+                --output trivy-frontend.json \
+                ${IMAGE_NAME}-frontend:${GIT_COMMIT_SHORT} || true
+        '''
+        archiveArtifacts artifacts: 'trivy-*.json', allowEmptyArchive: true
+        echo "✅ Security scan complete!"
+    }
+}
+
         
         stage('🚀 Deploy to Staging') {
             when {
