@@ -120,15 +120,19 @@ stage('🔒 Container Security Scan - Trivy') {
 }
 
 
-        
-        stage('🚀 Deploy to Staging') {
+stage('🚀 Deploy to Staging') {
+    steps {
+        sh '''
+            # Stop and remove old containers
+            docker compose -f docker-compose.yml down || true
+            
+            # Start new containers
+            docker compose -f docker-compose.yml up -d
+        '''
+        echo "✅ Deployed to staging!"
+    }
+}
 
-            steps {
-                sh '''
-                    docker compose -f docker-compose.yaml up -d
-                '''
-            }
-        }
     }
     
     post {
