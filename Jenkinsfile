@@ -102,19 +102,6 @@ stage('🔐 SAST - SonarQube Analysis') {
 stage('🔒 Container Security Scan - Trivy') {
     steps {
         sh '''
-            # Check if Trivy is installed
-            if ! command -v trivy &> /dev/null; then
-                echo "Installing Trivy..."
-                
-                # Add Trivy repository (new method without apt-key)
-                apt-get update
-                apt-get install -y wget apt-transport-https gnupg
-                wget -qO - https://aquasecurity.github.io/trivy-repo/deb/public.key | gpg --dearmor -o /usr/share/keyrings/trivy.gpg
-                echo "deb [signed-by=/usr/share/keyrings/trivy.gpg] https://aquasecurity.github.io/trivy-repo/deb generic main" | tee /etc/apt/sources.list.d/trivy.list
-                apt-get update
-                apt-get install -y trivy
-            fi
-            
             # Scan Backend Image
             trivy image --severity HIGH,CRITICAL \
                 --format json \
@@ -131,6 +118,7 @@ stage('🔒 Container Security Scan - Trivy') {
         echo "✅ Security scan complete!"
     }
 }
+
 
         
         stage('🚀 Deploy to Staging') {
