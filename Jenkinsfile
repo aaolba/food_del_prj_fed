@@ -123,8 +123,11 @@ stage('🔒 Container Security Scan - Trivy') {
 stage('🚀 Deploy to Staging') {
     steps {
         sh '''
-            # Stop and remove old containers
-            docker compose -f docker-compose.yml down || true
+            # Force stop and remove all project containers
+            docker compose -f docker-compose.yml down -v --remove-orphans || true
+            
+            # Remove any remaining containers manually
+            docker ps -a | grep food- | awk '{print $1}' | xargs -r docker rm -f || true
             
             # Start new containers
             docker compose -f docker-compose.yml up -d
@@ -132,6 +135,7 @@ stage('🚀 Deploy to Staging') {
         echo "✅ Deployed to staging!"
     }
 }
+
 
     }
     
