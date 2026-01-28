@@ -57,14 +57,14 @@ stage('🔐 SAST - SonarQube Analysis') {
 }
 
 
-        
-        stage('🔍 Quality Gate') {
-            steps {
-                timeout(time: 5, unit: 'MINUTES') {
-                    waitForQualityGate abortPipeline: false
-                }
-            }
+stage('🔍 Quality Gate') {
+    steps {
+        timeout(time: 15, unit: 'MINUTES') {  // Increase from 5 to 15
+            waitForQualityGate abortPipeline: false
         }
+    }
+}
+
         
         stage('🛡️ Dependency Check') {
             parallel {
