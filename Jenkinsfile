@@ -134,9 +134,7 @@ stage('🔒 Container Security Scan - Trivy') {
 
         
         stage('🚀 Deploy to Staging') {
-            when {
-                branch 'main'
-            }
+
             steps {
                 sh '''
                     docker compose -f docker-compose.yaml up -d
