@@ -48,16 +48,19 @@ services:
     networks:
       - food-network
   # Prometheus for monitoring
-  prometheus:
-    image: prom/prometheus:latest
-    container_name: food-prometheus
-    ports:
-      - "9090:9090"
-    volumes:
-      - ./prometheus.yml:/etc/prometheus/prometheus.yml
-      - prometheus_data:/prometheus
-    networks:
-      - food-network
+prometheus:
+  image: prom/prometheus:latest
+  container_name: food-prometheus
+  ports:
+    - "9090:9090"
+  volumes:
+    - ./prometheus.yml:/etc/prometheus/prometheus.yml:ro  # Add :ro for read-only
+    - prometheus_data:/prometheus
+  command:
+    - '--config.file=/etc/prometheus/prometheus.yml'      # Explicitly specify config
+  networks:
+    - food-network
+
 
 volumes:
   prometheus_data:
