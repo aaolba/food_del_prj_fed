@@ -50,7 +50,7 @@ services:
       - food-network
       
   # Prometheus for monitoring
-    prometheus:
+  prometheus:
     build:
       context: .
       dockerfile: prometheus/Dockerfile
@@ -62,7 +62,6 @@ services:
       - prometheus_data:/prometheus
     networks:
       - food-network
-
 
 volumes:
   prometheus_data:
