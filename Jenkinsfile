@@ -123,23 +123,12 @@ stage('🔒 Container Security Scan - Trivy') {
 stage('🚀 Deploy to Staging') {
     steps {
         sh '''
-            # Stop and remove containers
-            docker stop food-backend food-frontend food-prometheus 2>/dev/null || true
-            docker rm -f food-backend food-frontend food-prometheus 2>/dev/null || true
-            
-            # Clean up any dangling prometheus volumes/mounts
-            docker volume prune -f
-            
-            # Verify prometheus.yml exists in workspace
-            ls -la prometheus.yml
-            
-            # Start containers
+            docker compose -f docker-compose.yml down -v || true
             docker compose -f docker-compose.yml up -d backend frontend prometheus
-            
-            # Check status
-            docker ps | grep food
         '''
     }
+}
+
 }
 
 
