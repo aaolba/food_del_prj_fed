@@ -123,18 +123,17 @@ stage('🔒 Container Security Scan - Trivy') {
 stage('🚀 Deploy to Staging') {
     steps {
         sh '''
-            # Copy prometheus config to workspace
-            cp -f /home/devasc/Desktop/food_del_prj_fed/prometheus.yml ./prometheus.yml || true
-            
+            # prometheus.yml is already in workspace from git checkout
             # Stop only the application containers (NOT sonarqube)
             docker stop food-backend food-frontend food-prometheus 2>/dev/null || true
             docker rm food-backend food-frontend food-prometheus 2>/dev/null || true
             
-            # Start the application containers using docker compose
+            # Start the application containers
             docker compose -f docker-compose.yml up -d backend frontend prometheus
         '''
     }
 }
+
 
 
 
