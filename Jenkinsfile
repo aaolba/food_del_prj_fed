@@ -123,16 +123,25 @@ stage('🔒 Container Security Scan - Trivy') {
 stage('🚀 Deploy to Staging') {
     steps {
         sh '''
-            # prometheus.yml is already in workspace from git checkout
-            # Stop only the application containers (NOT sonarqube)
+            # Stop and remove containers
             docker stop food-backend food-frontend food-prometheus 2>/dev/null || true
-            docker rm food-backend food-frontend food-prometheus 2>/dev/null || true
+            docker rm -f food-backend food-frontend food-prometheus 2>/dev/null || true
             
-            # Start the application containers
+            # Clean up any dangling prometheus volumes/mounts
+            docker volume prune -f
+            
+            # Verify prometheus.yml exists in workspace
+            ls -la prometheus.yml
+            
+            # Start containers
             docker compose -f docker-compose.yml up -d backend frontend prometheus
+            
+            # Check status
+            docker ps | grep food
         '''
     }
 }
+
 
 
 
