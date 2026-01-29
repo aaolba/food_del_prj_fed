@@ -50,19 +50,19 @@ services:
       - food-network
       
   # Prometheus for monitoring
-  prometheus:
-    image: prom/prometheus:latest
+    prometheus:
+    build:
+      context: .
+      dockerfile: prometheus/Dockerfile
     container_name: food-prometheus
     restart: unless-stopped
     ports:
       - "9090:9090"
     volumes:
-      - ./prometheus.yml:/etc/prometheus/prometheus.yml:ro
       - prometheus_data:/prometheus
-    command:
-      - '--config.file=/etc/prometheus/prometheus.yml'
     networks:
       - food-network
+
 
 volumes:
   prometheus_data:
