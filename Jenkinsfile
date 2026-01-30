@@ -5,6 +5,7 @@ pipeline {
         DOCKER_REGISTRY = 'docker.io/your-username'
         IMAGE_NAME = 'food-delivery'
         SONAR_HOST = 'http://sonarqube:9000'
+        DOCKER_BUILDKIT = '1'  // Enable BuildKit for faster builds
     }
     
     tools {
@@ -87,7 +88,7 @@ pipeline {
             }
         }
         
-        /*stage('🔍 Quality Gate') {
+        stage('🔍 Quality Gate') {
             steps {
                 timeout(time: 10, unit: 'MINUTES') {
                     script {
@@ -107,7 +108,7 @@ pipeline {
                     }
                 }
             }
-        }*/
+        }
         
         stage('🛡️ Dependency Check') {
             parallel {
@@ -133,9 +134,17 @@ pipeline {
         stage('🐳 Build Docker Images') {
             steps {
                 script {
+                    echo "Building Docker images with BuildKit..."
                     sh """
-                        docker build -t ${IMAGE_NAME}-backend:${GIT_COMMIT_SHORT} ./backend
-                        docker build -t ${IMAGE_NAME}-frontend:${GIT_COMMIT_SHORT} ./frontend
+                        DOCKER_BUILDKIT=1 docker build \
+                          --build-arg BUILDKIT_INLINE_CACHE=1 \
+                          -t ${IMAGE_NAME}-backend:${GIT_COMMIT_SHORT} \
+                          ./backend
+                        
+                        DOCKER_BUILDKIT=1 docker build \
+                          --build-arg BUILDKIT_INLINE_CACHE=1 \
+                          -t ${IMAGE_NAME}-frontend:${GIT_COMMIT_SHORT} \
+                          ./frontend
                     """
                 }
             }
@@ -143,7 +152,7 @@ pipeline {
         
         stage('🔒 Container Security Scan - Trivy') {
             steps {
-                sh '''
+                sh """
                     trivy image --severity HIGH,CRITICAL \
                         --format json \
                         --output trivy-backend.json \
@@ -153,24 +162,62 @@ pipeline {
                         --format json \
                         --output trivy-frontend.json \
                         ${IMAGE_NAME}-frontend:${GIT_COMMIT_SHORT} || true
-                '''
+                """
                 archiveArtifacts artifacts: 'trivy-*.json', allowEmptyArchive: true
-                echo "✅ Security scan complete!"
+                echo "✅ Container security scan complete!"
             }
         }
         
         stage('🚀 Deploy to Staging') {
             steps {
                 sh '''
-                    docker compose -f docker-compose.yml down -v || true
+                    docker compose -f docker-compose.yml down || true
                     docker compose -f docker-compose.yml up -d backend frontend prometheus grafana
                     
-                    # Wait for services
-                    sleep 10
+                    # Wait for services to be ready
+                    echo "Waiting for services to start..."
+                    sleep 15
                     
                     # Verify deployment
                     docker ps --filter "name=food-" --format "table {{.Names}}\\t{{.Status}}"
                 '''
+            }
+        }
+        
+        stage('🛡️ DAST - OWASP ZAP') {
+            steps {
+                script {
+                    echo "Running OWASP ZAP baseline security scan..."
+                    sh '''
+                        # Pull ZAP image
+                        docker pull owasp/zap2docker-stable || echo "Using cached ZAP image"
+                        
+                        # Run ZAP baseline scan
+                        docker run --rm \
+                          --network food_del_prj_fed_food-network \
+                          -v $(pwd):/zap/wrk:rw \
+                          owasp/zap2docker-stable \
+                          zap-baseline.py \
+                          -t http://food-frontend:3000 \
+                          -r zap-report.html \
+                          -J zap-report.json || true
+                        
+                        echo "✅ DAST scan complete!"
+                    '''
+                }
+            }
+            post {
+                always {
+                    publishHTML([
+                        allowMissing: true,
+                        alwaysLinkToLastBuild: true,
+                        keepAll: true,
+                        reportDir: '.',
+                        reportFiles: 'zap-report.html',
+                        reportName: 'OWASP ZAP Security Report'
+                    ])
+                    archiveArtifacts artifacts: 'zap-report.json', allowEmptyArchive: true
+                }
             }
         }
     }
@@ -180,7 +227,8 @@ pipeline {
             cleanWs()
         }
         success {
-            echo "✅ Pipeline SUCCESS: ${env.JOB_NAME} #${env.BUILD_NUMBER}"
+            echo "✅✅✅ Pipeline SUCCESS: ${env.JOB_NAME} #${env.BUILD_NUMBER} ✅✅✅"
+            echo "All DevSecOps stages completed successfully!"
         }
         failure {
             echo "❌ Pipeline FAILED: ${env.JOB_NAME} #${env.BUILD_NUMBER}"
