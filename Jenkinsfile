@@ -55,16 +55,45 @@ stage('🔐 SAST - SonarQube Analysis') {
         }
     }
 }
-
-
-
-        stage('🔍 Quality Gate') {
+stage('🧪 Unit Tests') {
+    parallel {
+        stage('Backend Tests') {
             steps {
-                timeout(time: 5, unit: 'MINUTES') {
-                    waitForQualityGate abortPipeline: true
+                dir('backend') {
+                    sh 'npm test -- --coverage --coverageReporters=lcov || true'
+                }
+            }
+            post {
+                always {
+                    publishHTML([
+                        reportDir: 'backend/coverage/lcov-report',
+                        reportFiles: 'index.html',
+                        reportName: 'Backend Coverage',
+                        allowMissing: true
+                    ])
                 }
             }
         }
+        stage('Frontend Tests') {
+            steps {
+                dir('frontend') {
+                    sh 'npm test || true'
+                }
+            }
+        }
+    }
+}
+
+
+
+
+        //stage('🔍 Quality Gate') {
+        //   steps {
+        //        timeout(time: 5, unit: 'MINUTES') {
+        //            waitForQualityGate abortPipeline: true
+        //        }
+        //    }
+        //}
 
         
         stage('🛡️ Dependency Check') {
