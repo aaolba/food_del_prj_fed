@@ -168,21 +168,21 @@ pipeline {
             }
         }
         
-        stage('🚀 Deploy to Staging') {
-            steps {
-                sh '''
-                    docker compose -f docker-compose.yml down || true
-                    docker compose -f docker-compose.yml up -d backend frontend prometheus grafana
-                    
-                    # Wait for services to be ready
-                    echo "Waiting for services to start..."
-                    sleep 15
-                    
-                    # Verify deployment
-                    docker ps --filter "name=food-" --format "table {{.Names}}\\t{{.Status}}"
-                '''
-            }
-        }
+stage('🚀 Deploy to Staging') {
+    steps {
+        sh '''
+            # Force recreate containers
+            docker compose -f docker-compose.yml up -d --force-recreate backend frontend prometheus grafana
+            
+            # Wait for services
+            sleep 15
+            
+            # Verify deployment
+            docker ps --filter "name=food-"
+        '''
+    }
+}
+
         
         stage('🛡️ DAST - OWASP ZAP') {
             steps {
