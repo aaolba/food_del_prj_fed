@@ -1,7 +1,6 @@
 version: '3.3'
 
 services:
-  # Backend API
   backend:
     build:
       context: ./backend
@@ -20,7 +19,6 @@ services:
       timeout: 10s
       retries: 3
       
-  # Frontend React
   frontend:
     build:
       context: ./frontend
@@ -34,7 +32,6 @@ services:
     networks:
       - food-network
 
-  # SonarQube
   sonarqube:
     image: sonarqube:lts-community
     container_name: food-sonarqube
@@ -50,7 +47,6 @@ services:
     networks:
       - food-network
       
-  # Prometheus for monitoring
   prometheus:
     build:
       context: .
@@ -64,7 +60,6 @@ services:
     networks:
       - food-network
       
-  # Grafana for dashboards
   grafana:
     image: grafana/grafana:latest
     container_name: food-grafana
@@ -74,9 +69,9 @@ services:
     environment:
       - GF_SECURITY_ADMIN_USER=admin
       - GF_SECURITY_ADMIN_PASSWORD=admin
-      - GF_INSTALL_PLUGINS=grafana-clock-panel,grafana-simple-json-datasource
     volumes:
       - grafana_data:/var/lib/grafana
+      - ./grafana/provisioning:/etc/grafana/provisioning:ro
     depends_on:
       - prometheus
     networks:
