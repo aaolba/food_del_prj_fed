@@ -171,17 +171,22 @@ pipeline {
 stage('🚀 Deploy to Staging') {
     steps {
         sh '''
-            # Force recreate containers
-            docker compose -f docker-compose.yml up -d --force-recreate backend frontend prometheus grafana
+            # Stop and remove existing containers
+            docker stop food-backend food-frontend food-prometheus food-grafana 2>/dev/null || true
+            docker rm food-backend food-frontend food-prometheus food-grafana 2>/dev/null || true
+            
+            # Deploy fresh containers
+            docker compose -f docker-compose.yml up -d backend frontend prometheus grafana
             
             # Wait for services
             sleep 15
             
             # Verify deployment
-            docker ps --filter "name=food-"
+            docker ps --filter "name=food-" --format "table {{.Names}}\\t{{.Status}}"
         '''
     }
 }
+
 
         
         stage('🛡️ DAST - OWASP ZAP') {
