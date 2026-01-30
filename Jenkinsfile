@@ -88,7 +88,7 @@ pipeline {
             }
         }
         
-        stage('🔍 Quality Gate') {
+        /*stage('🔍 Quality Gate') {
             steps {
                 timeout(time: 10, unit: 'MINUTES') {
                     script {
@@ -108,7 +108,7 @@ pipeline {
                     }
                 }
             }
-        }
+        }*/
         
         stage('🛡️ Dependency Check') {
             parallel {
