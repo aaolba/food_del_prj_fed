@@ -176,7 +176,7 @@ stage('🚀 Deploy to Staging') {
             docker rm food-backend food-frontend food-prometheus food-grafana 2>/dev/null || true
             
             # Deploy fresh containers
-            docker compose -f docker-compose.yml up -d backend frontend prometheus grafana
+            docker compose -f docker-compose.yml up -d backend frontend prometheus 
             
             # Wait for services
             sleep 15
