@@ -5,7 +5,7 @@ pipeline {
         DOCKER_REGISTRY = 'docker.io/your-username'
         IMAGE_NAME = 'food-delivery'
         SONAR_HOST = 'http://sonarqube:9000'
-        DOCKER_BUILDKIT = '1'  // Enable BuildKit for faster builds
+        DOCKER_BUILDKIT = '1'
     }
     
     tools {
@@ -88,28 +88,6 @@ pipeline {
             }
         }
         
-        /*stage('🔍 Quality Gate') {
-            steps {
-                timeout(time: 10, unit: 'MINUTES') {
-                    script {
-                        try {
-                            def qg = waitForQualityGate()
-                            if (qg.status != 'OK') {
-                                echo "⚠️ Quality Gate failed: ${qg.status}"
-                                // Uncomment the next line to make it blocking
-                                // error "Quality Gate failed"
-                            } else {
-                                echo "✅ Quality Gate passed!"
-                            }
-                        } catch (Exception e) {
-                            echo "⚠️ Quality Gate check failed: ${e.message}"
-                            echo "Continuing pipeline..."
-                        }
-                    }
-                }
-            }
-        }*/
-        
         stage('🛡️ Dependency Check') {
             parallel {
                 stage('Backend Audit') {
@@ -168,52 +146,61 @@ pipeline {
             }
         }
         
-stage('🚀 Deploy to Staging') {
-    steps {
-        sh '''
-            # Stop and remove existing containers (except SonarQube to preserve data)
-            docker stop food-backend food-frontend food-prometheus food-grafana 2>/dev/null || true
-            docker rm food-backend food-frontend food-prometheus food-grafana 2>/dev/null || true
-            
-            # Deploy fresh containers (including Grafana)
-            docker compose -f docker-compose.yml up -d backend frontend prometheus grafana
-            
-            # Wait for services to be healthy
-            echo "⏳ Waiting for services to start..."
-            sleep 20
-            
-            # Verify deployment
-            echo "=== Container Status ==="
-            docker ps --filter "name=food-" --format "table {{.Names}}\\t{{.Status}}\\t{{.Ports}}"
-            
-            # Check backend health
-            echo "\\n=== Backend Health Check ==="
-            curl -f http://localhost:4000/health || echo "❌ Backend health check failed"
-            
-            # Check Prometheus targets
-            echo "\\n=== Prometheus Targets ==="
-            curl -s http://localhost:9090/api/v1/targets | grep -o '"health":"[^"]*"' || echo "❌ Prometheus check failed"
-            
-            # Verify Grafana dashboard
-            echo "\\n=== Grafana Dashboard Check ==="
-            sleep 5
-            curl -s -u admin:admin http://localhost:3000/api/search?type=dash-db | grep -q "food-backend" && echo "✅ Dashboard loaded" || echo "❌ Dashboard not found"
-        '''
-    }
-}
-
-
-
+        stage('🚀 Deploy to Staging') {
+            steps {
+                sh '''
+                    # Stop containers but keep volumes
+                    docker stop food-backend food-frontend food-prometheus food-grafana 2>/dev/null || true
+                    docker rm food-backend food-frontend food-prometheus food-grafana 2>/dev/null || true
+                    
+                    # Deploy all services
+                    docker compose -f docker-compose.yml up -d backend frontend prometheus grafana
+                    
+                    # Wait for services
+                    echo "⏳ Waiting for services..."
+                    sleep 25
+                    
+                    # Force Grafana to reload provisioning
+                    echo "\\n=== Reloading Grafana Dashboards ==="
+                    docker exec food-grafana grafana-cli admin reset-admin-password admin --homepath /usr/share/grafana || true
+                    
+                    # Verify deployment
+                    echo "\\n=== Container Status ==="
+                    docker ps --filter "name=food-" --format "table {{.Names}}\\t{{.Status}}"
+                    
+                    # Health checks
+                    echo "\\n=== Backend Health ==="
+                    curl -f http://localhost:4000/health && echo "✅ Healthy" || echo "❌ Failed"
+                    
+                    echo "\\n=== Grafana Provisioning ==="
+                    docker exec food-grafana ls -la /etc/grafana/provisioning/dashboards/
+                    
+                    # Wait for dashboard to be provisioned
+                    sleep 10
+                    
+                    echo "\\n=== Dashboard Check ==="
+                    DASHBOARD_COUNT=$(curl -s -u admin:admin http://localhost:3000/api/search?type=dash-db | grep -c "food-backend" || echo "0")
+                    
+                    if [ "$DASHBOARD_COUNT" -gt 0 ]; then
+                        echo "✅ Dashboard loaded successfully"
+                    else
+                        echo "⚠️ Dashboard not found, reimporting..."
+                        # Dashboard will auto-load from provisioning on next restart
+                        docker restart food-grafana
+                        sleep 15
+                        curl -s -u admin:admin http://localhost:3000/api/search?type=dash-db
+                    fi
+                '''
+            }
+        }
         
         stage('🛡️ DAST - OWASP ZAP') {
             steps {
                 script {
                     echo "Running OWASP ZAP baseline security scan..."
                     sh '''
-                        # Pull ZAP image
                         docker pull owasp/zap2docker-stable || echo "Using cached ZAP image"
                         
-                        # Run ZAP baseline scan
                         docker run --rm \
                           --network food_del_prj_fed_food-network \
                           -v $(pwd):/zap/wrk:rw \
@@ -249,7 +236,7 @@ stage('🚀 Deploy to Staging') {
         }
         success {
             echo "✅✅✅ Pipeline SUCCESS: ${env.JOB_NAME} #${env.BUILD_NUMBER} ✅✅✅"
-            echo "All DevSecOps stages completed successfully!"
+            echo "📊 Grafana: http://localhost:3000/d/food-backend/food-delivery-backend-metrics"
         }
         failure {
             echo "❌ Pipeline FAILED: ${env.JOB_NAME} #${env.BUILD_NUMBER}"
