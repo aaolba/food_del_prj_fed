@@ -171,21 +171,37 @@ pipeline {
 stage('🚀 Deploy to Staging') {
     steps {
         sh '''
-            # Stop and remove existing containers
-            docker stop food-backend food-frontend food-prometheus  2>/dev/null || true
-            docker rm food-backend food-frontend food-prometheus  2>/dev/null || true
+            # Stop and remove existing containers (except SonarQube to preserve data)
+            docker stop food-backend food-frontend food-prometheus food-grafana 2>/dev/null || true
+            docker rm food-backend food-frontend food-prometheus food-grafana 2>/dev/null || true
             
-            # Deploy fresh containers
-            docker compose -f docker-compose.yml up -d backend frontend prometheus 
+            # Deploy fresh containers (including Grafana)
+            docker compose -f docker-compose.yml up -d backend frontend prometheus grafana
             
-            # Wait for services
-            sleep 15
+            # Wait for services to be healthy
+            echo "⏳ Waiting for services to start..."
+            sleep 20
             
             # Verify deployment
-            docker ps --filter "name=food-" --format "table {{.Names}}\\t{{.Status}}"
+            echo "=== Container Status ==="
+            docker ps --filter "name=food-" --format "table {{.Names}}\\t{{.Status}}\\t{{.Ports}}"
+            
+            # Check backend health
+            echo "\\n=== Backend Health Check ==="
+            curl -f http://localhost:4000/health || echo "❌ Backend health check failed"
+            
+            # Check Prometheus targets
+            echo "\\n=== Prometheus Targets ==="
+            curl -s http://localhost:9090/api/v1/targets | grep -o '"health":"[^"]*"' || echo "❌ Prometheus check failed"
+            
+            # Verify Grafana dashboard
+            echo "\\n=== Grafana Dashboard Check ==="
+            sleep 5
+            curl -s -u admin:admin http://localhost:3000/api/search?type=dash-db | grep -q "food-backend" && echo "✅ Dashboard loaded" || echo "❌ Dashboard not found"
         '''
     }
 }
+
 
 
         
