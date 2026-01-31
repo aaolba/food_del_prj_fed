@@ -149,55 +149,56 @@ pipeline {
         stage('🚀 Deploy to Staging') {
             steps {
                 sh '''
-                    set -e
-                    
                     echo "=== Verify Grafana Provisioning Files ==="
-                    ls -la grafana/provisioning/dashboards/ || echo "⚠️ No dashboard files found"
-                    ls -la grafana/provisioning/datasources/ || echo "⚠️ No datasource files found"
+                    ls -la grafana/provisioning/dashboards/ || echo "⚠️ No dashboard files"
+                    ls -la grafana/provisioning/datasources/ || echo "⚠️ No datasource files"
                     
-                    echo "\\n=== Stopping Existing Containers ==="
+                    echo "\\n=== Stopping Containers ==="
                     docker stop food-backend food-frontend food-prometheus food-grafana 2>/dev/null || true
                     docker rm food-backend food-frontend food-prometheus food-grafana 2>/dev/null || true
                     
                     echo "\\n=== Starting Services ==="
                     docker compose -f docker-compose.yml up -d backend frontend prometheus grafana
                     
-                    echo "\\n⏳ Waiting 40 seconds for services to fully start..."
-                    sleep 40
+                    echo "\\n⏳ Waiting 45 seconds for services..."
+                    sleep 45
                     
                     echo "\\n=== Container Status ==="
-                    docker ps --filter "name=food-" --format "table {{.Names}}\\t{{.Status}}\\t{{.Ports}}"
+                    docker ps --filter "name=food-" --format "table {{.Names}}\\t{{.Status}}"
                     
-                    echo "\\n=== Verify Grafana Mount ==="
-                    docker exec food-grafana ls -la /etc/grafana/provisioning/ || echo "❌ Provisioning dir not mounted"
-                    docker exec food-grafana ls -la /etc/grafana/provisioning/dashboards/ || echo "❌ Dashboards dir missing"
+                    echo "\\n=== Verify Grafana Mounts ==="
+                    docker exec food-grafana ls -la /etc/grafana/provisioning/dashboards/ 2>&1 || echo "❌ Dashboard mount failed"
+                    docker exec food-grafana ls -la /etc/grafana/provisioning/datasources/ 2>&1 || echo "❌ Datasource mount failed"
                     
-                    echo "\\n=== Backend Health Check (retry logic) ==="
-                    for i in {1..5}; do
-                        if curl -f http://localhost:4000/health; then
-                            echo "✅ Backend healthy"
+                    echo "\\n=== Backend Health Check ==="
+                    for i in 1 2 3 4 5; do
+                        if curl -f http://localhost:4000/health 2>/dev/null; then
+                            echo "✅ Backend healthy on attempt $i"
                             break
                         else
-                            echo "⚠️ Attempt $i failed, retrying in 5s..."
-                            sleep 5
+                            echo "⚠️ Attempt $i/5 failed, waiting 10s..."
+                            sleep 10
                         fi
                     done
                     
+                    echo "\\n=== Check Backend Logs ==="
+                    docker logs food-backend --tail 10
+                    
                     echo "\\n=== Prometheus Targets ==="
-                    curl -s http://localhost:9090/api/v1/targets | grep -o '"health":"[^"]*"' | head -3 || echo "⚠️ Prometheus check failed"
+                    curl -s http://localhost:9090/api/v1/targets 2>/dev/null | grep -o '"health":"[^"]*"' | head -3 || echo "⚠️ Prometheus not ready"
                     
-                    echo "\\n=== Grafana Dashboard Check ==="
-                    sleep 5
-                    DASHBOARD_CHECK=$(curl -s -u admin:admin http://localhost:3000/api/search?type=dash-db)
-                    echo "$DASHBOARD_CHECK"
+                    echo "\\n=== Grafana Dashboard ==="
+                    sleep 10
+                    DASHBOARD=$(curl -s -u admin:admin http://localhost:3000/api/search?type=dash-db 2>/dev/null || echo "[]")
+                    echo "$DASHBOARD"
                     
-                    if echo "$DASHBOARD_CHECK" | grep -q "food-backend"; then
-                        echo "✅ Dashboard loaded successfully"
+                    if echo "$DASHBOARD" | grep -q "food-backend"; then
+                        echo "✅ Dashboard loaded"
                     else
-                        echo "⚠️ Dashboard not found, restarting Grafana..."
+                        echo "⚠️ Dashboard missing, restarting Grafana..."
                         docker restart food-grafana
                         sleep 20
-                        curl -s -u admin:admin http://localhost:3000/api/search?type=dash-db
+                        curl -s -u admin:admin http://localhost:3000/api/search?type=dash-db || true
                     fi
                 '''
             }
@@ -206,10 +207,8 @@ pipeline {
         stage('🛡️ DAST - OWASP ZAP') {
             steps {
                 script {
-                    echo "Running OWASP ZAP baseline security scan..."
+                    echo "Running OWASP ZAP security scan..."
                     sh '''
-                        docker pull owasp/zap2docker-stable || echo "Using cached ZAP image"
-                        
                         docker run --rm \
                           --network food_del_prj_fed_food-network \
                           -v $(pwd):/zap/wrk:rw \
@@ -218,8 +217,6 @@ pipeline {
                           -t http://food-frontend:3000 \
                           -r zap-report.html \
                           -J zap-report.json || true
-                        
-                        echo "✅ DAST scan complete!"
                     '''
                 }
             }
@@ -231,7 +228,7 @@ pipeline {
                         keepAll: true,
                         reportDir: '.',
                         reportFiles: 'zap-report.html',
-                        reportName: 'OWASP ZAP Security Report'
+                        reportName: 'OWASP ZAP Report'
                     ])
                     archiveArtifacts artifacts: 'zap-report.json', allowEmptyArchive: true
                 }
@@ -244,12 +241,11 @@ pipeline {
             cleanWs()
         }
         success {
-            echo "✅✅✅ Pipeline SUCCESS: ${env.JOB_NAME} #${env.BUILD_NUMBER} ✅✅✅"
-            echo "📊 Grafana: http://localhost:3000/d/food-backend/food-delivery-backend-metrics"
-            echo "📈 Prometheus: http://localhost:9090"
+            echo "✅ Pipeline SUCCESS #${env.BUILD_NUMBER}"
+            echo "📊 Grafana: http://localhost:3000/d/food-backend"
         }
         failure {
-            echo "❌ Pipeline FAILED: ${env.JOB_NAME} #${env.BUILD_NUMBER}"
+            echo "❌ Pipeline FAILED #${env.BUILD_NUMBER}"
         }
     }
 }
