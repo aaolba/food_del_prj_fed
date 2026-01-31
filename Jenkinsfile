@@ -149,45 +149,54 @@ pipeline {
         stage('🚀 Deploy to Staging') {
             steps {
                 sh '''
-                    # Stop containers but keep volumes
+                    set -e
+                    
+                    echo "=== Verify Grafana Provisioning Files ==="
+                    ls -la grafana/provisioning/dashboards/ || echo "⚠️ No dashboard files found"
+                    ls -la grafana/provisioning/datasources/ || echo "⚠️ No datasource files found"
+                    
+                    echo "\\n=== Stopping Existing Containers ==="
                     docker stop food-backend food-frontend food-prometheus food-grafana 2>/dev/null || true
                     docker rm food-backend food-frontend food-prometheus food-grafana 2>/dev/null || true
                     
-                    # Deploy all services
+                    echo "\\n=== Starting Services ==="
                     docker compose -f docker-compose.yml up -d backend frontend prometheus grafana
                     
-                    # Wait for services
-                    echo "⏳ Waiting for services..."
-                    sleep 25
+                    echo "\\n⏳ Waiting 40 seconds for services to fully start..."
+                    sleep 40
                     
-                    # Force Grafana to reload provisioning
-                    echo "\\n=== Reloading Grafana Dashboards ==="
-                    docker exec food-grafana grafana-cli admin reset-admin-password admin --homepath /usr/share/grafana || true
-                    
-                    # Verify deployment
                     echo "\\n=== Container Status ==="
-                    docker ps --filter "name=food-" --format "table {{.Names}}\\t{{.Status}}"
+                    docker ps --filter "name=food-" --format "table {{.Names}}\\t{{.Status}}\\t{{.Ports}}"
                     
-                    # Health checks
-                    echo "\\n=== Backend Health ==="
-                    curl -f http://localhost:4000/health && echo "✅ Healthy" || echo "❌ Failed"
+                    echo "\\n=== Verify Grafana Mount ==="
+                    docker exec food-grafana ls -la /etc/grafana/provisioning/ || echo "❌ Provisioning dir not mounted"
+                    docker exec food-grafana ls -la /etc/grafana/provisioning/dashboards/ || echo "❌ Dashboards dir missing"
                     
-                    echo "\\n=== Grafana Provisioning ==="
-                    docker exec food-grafana ls -la /etc/grafana/provisioning/dashboards/
+                    echo "\\n=== Backend Health Check (retry logic) ==="
+                    for i in {1..5}; do
+                        if curl -f http://localhost:4000/health; then
+                            echo "✅ Backend healthy"
+                            break
+                        else
+                            echo "⚠️ Attempt $i failed, retrying in 5s..."
+                            sleep 5
+                        fi
+                    done
                     
-                    # Wait for dashboard to be provisioned
-                    sleep 10
+                    echo "\\n=== Prometheus Targets ==="
+                    curl -s http://localhost:9090/api/v1/targets | grep -o '"health":"[^"]*"' | head -3 || echo "⚠️ Prometheus check failed"
                     
-                    echo "\\n=== Dashboard Check ==="
-                    DASHBOARD_COUNT=$(curl -s -u admin:admin http://localhost:3000/api/search?type=dash-db | grep -c "food-backend" || echo "0")
+                    echo "\\n=== Grafana Dashboard Check ==="
+                    sleep 5
+                    DASHBOARD_CHECK=$(curl -s -u admin:admin http://localhost:3000/api/search?type=dash-db)
+                    echo "$DASHBOARD_CHECK"
                     
-                    if [ "$DASHBOARD_COUNT" -gt 0 ]; then
+                    if echo "$DASHBOARD_CHECK" | grep -q "food-backend"; then
                         echo "✅ Dashboard loaded successfully"
                     else
-                        echo "⚠️ Dashboard not found, reimporting..."
-                        # Dashboard will auto-load from provisioning on next restart
+                        echo "⚠️ Dashboard not found, restarting Grafana..."
                         docker restart food-grafana
-                        sleep 15
+                        sleep 20
                         curl -s -u admin:admin http://localhost:3000/api/search?type=dash-db
                     fi
                 '''
@@ -237,6 +246,7 @@ pipeline {
         success {
             echo "✅✅✅ Pipeline SUCCESS: ${env.JOB_NAME} #${env.BUILD_NUMBER} ✅✅✅"
             echo "📊 Grafana: http://localhost:3000/d/food-backend/food-delivery-backend-metrics"
+            echo "📈 Prometheus: http://localhost:9090"
         }
         failure {
             echo "❌ Pipeline FAILED: ${env.JOB_NAME} #${env.BUILD_NUMBER}"
